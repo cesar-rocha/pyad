@@ -31,6 +31,7 @@ class TwoDimensionalModel(object):
             Ly=None,                    # width
             # physical parameters
             nu = 0.,
+            G = 1.,
             # timestepping parameters
             dt=.0025,               # numerical timestep
             twrite=100,             # interval for cfl and ke printout (in timesteps)
@@ -71,6 +72,9 @@ class TwoDimensionalModel(object):
 
         # physical
         self.nu = nu
+        # background Q
+        self.G = G
+        self.Q = self.G*self.y
 
         # time related variables
         self.ntmax = int(np.ceil(tmax/dt))

@@ -1,6 +1,7 @@
 from __future__ import division
 import numpy as np
 from numpy import pi, exp, sqrt, cos, sin
+import logging
 
 from netCDF4 import Dataset
 
@@ -48,7 +49,10 @@ class TwoDimensionalModel(object):
             urms=1,
             power=3,
             tau = 1.,
-            diagnostics_list='all'):
+            diagnostics_list='all',
+            logfile=None,
+            loglevel=1,
+            printcadence = 10):
 
         if ny is None: ny = nx
         if Ly is None: Ly = Lx
@@ -91,6 +95,12 @@ class TwoDimensionalModel(object):
         self.kappa2i[self.fnz] = self.kappa2[self.fnz]**-1
 
         self.diagnostics_list = diagnostics_list
+        self.logfile = logfile
+        self.loglevel=loglevel
+        self.printcadence = printcadence
+
+        # logger
+        self._initialize_logger()
 
         # exponential filter or dealising
         self.use_filter = use_filter
@@ -120,11 +130,8 @@ class TwoDimensionalModel(object):
         if self.save2disk:
             self._init_fno()
 
-
         self.dirx = True
         self._velocity()
-
-
 
     def run(self):
         """ step forward until tmax """
@@ -134,7 +141,7 @@ class TwoDimensionalModel(object):
             self._stepforward()
 
             if (self.ndt%self.twrite == 0.):
-                self._printout()
+                self._print_status()
             if self.save2disk:
                 self._write2disk()
 
@@ -153,7 +160,7 @@ class TwoDimensionalModel(object):
 
             self._stepforward()
             if (self.ndt%self.twrite == 0.):
-                self._printout()
+                self._print_status()
             if self.t>=tsnapstart and (self.ndt%tsnapints)==0:
                 yield self.t
             if self.save2disk:
@@ -263,15 +270,13 @@ class TwoDimensionalModel(object):
         self.v = v
         self.u = u
 
-    def _printout(self):
-        """ Print model status """
-        if (self.ndt%self.twrite == 0.):
-            #ke = self._calc_ke()
-            ens = self._calc_ens()
-            cfl = self._calc_cfl()
-            print 't=%6.2f, cfl=%5.6f, var=%9.9f' %(
-                   self.t, cfl, ens)
-            #assert cfl<1., "CFL condition violated"
+    def _print_status(self):
+        """Output some basic stats."""
+        if (self.loglevel) and ((self.ndt % self.printcadence)==0):
+            self.var = self.spec_var(self.qh)
+            self.logger.info('Step: %4i, Time: %3.2e, Variance: %3.2e'
+                    , self.ndt,self.t,self.var)            #assert cfl<1., "CFL condition violated"
+
 
     def _write2disk(self):
         """ Save to disk """
@@ -328,6 +333,31 @@ class TwoDimensionalModel(object):
             self.filt = np.ones_like(self.kappa2)
             self.filt[self.nx/3:2*self.nx/3,:] = 0.
             self.filt[:,self.ny/3:] = 0.
+
+    # logger
+    def _initialize_logger(self):
+
+        self.logger = logging.getLogger(__name__)
+
+
+        if self.logfile:
+            fhandler = logging.FileHandler(filename=self.logfile, mode='w')
+        else:
+            fhandler = logging.StreamHandler()
+
+        formatter = logging.Formatter('%(levelname)s: %(message)s')
+
+        fhandler.setFormatter(formatter)
+
+        if not self.logger.handlers:
+            self.logger.addHandler(fhandler)
+
+        self.logger.setLevel(self.loglevel*10)
+
+        # this prevents the logger to propagate into the ipython notebook log
+        self.logger.propagate = False
+
+        self.logger.info(' Logger initialized')
 
     # init netcdf output file
     def _init_fno(self):

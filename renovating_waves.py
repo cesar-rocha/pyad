@@ -19,7 +19,6 @@ class RWModel(spectral_model.TwoDimensionalModel):
                  tau = 1,
                  **kwargs):
 
-
         # velocity field
         self.nmin = nmin
         self.nmax = nmax
@@ -29,8 +28,6 @@ class RWModel(spectral_model.TwoDimensionalModel):
         self.tau = tau
 
         super(RWModel, self).__init__(**kwargs)
-
-
 
     def _init_velocity(self):
 
@@ -47,7 +44,7 @@ class RWModel(spectral_model.TwoDimensionalModel):
         #assert self.lb > self.dx, "**Warning: Batchelor scale not resolved."
 
     def _velocity(self):
-        pass
+
         if (self.ndt%self.ntau == 0.):
 
             # have this in subclasses

@@ -16,7 +16,9 @@ class RWModel(spectral_model.TwoDimensionalModel):
                  nmax = 64,
                  urms=1,
                  power=3,
-                 tau = 1, **kwargs):
+                 tau = 1,
+                 G = 1.,
+                 **kwargs):
 
 
         # velocity field
@@ -29,6 +31,9 @@ class RWModel(spectral_model.TwoDimensionalModel):
 
         super(RWModel, self).__init__(**kwargs)
 
+        # background Q
+        self.G = G
+        self.Q = self.G*self.y
 
     def _init_velocity(self):
 

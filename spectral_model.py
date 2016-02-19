@@ -31,7 +31,6 @@ class TwoDimensionalModel(object):
             Ly=None,                    # width
             # physical parameters
             nu = 0.,
-            G = 0.,
             # timestepping parameters
             dt=.0025,               # numerical timestep
             twrite=100,             # interval for cfl and ke printout (in timesteps)
@@ -72,7 +71,6 @@ class TwoDimensionalModel(object):
 
         # physical
         self.nu = nu
-        self.G = G
 
         # time related variables
         self.ntmax = int(np.ceil(tmax/dt))
@@ -121,7 +119,6 @@ class TwoDimensionalModel(object):
 
         # initialize tracer field
         self.set_q(np.random.randn(self.ny,self.nx))
-        self.Q = self.G*self.y
 
         # initialize velocity
         self._init_velocity()

@@ -27,6 +27,12 @@ class RWModel(spectral_model.TwoDimensionalModel):
 
         self.tau = tau
 
+        # some initial diagnostics
+        #self.Pe = self.urms/(self.kappa*self.kmin)
+        #self.dt = 1./(self.urms*self.kmin)
+        #self.dt_2 = self.dt/2.
+        self.D = (self.urms**2)*self.tau/4.
+
         super(RWModel, self).__init__(**kwargs)
 
     def _init_velocity(self):

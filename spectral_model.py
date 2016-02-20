@@ -39,6 +39,7 @@ class TwoDimensionalModel(object):
             filt=True,              # spectral filter flag
             use_fftw=True,
             ntd = 1,                # number of threads for fftw
+            tavestart = 5,
             # filter or dealiasing (False for 2/3 rule)
             use_filter=True,
             # saving parameters
@@ -52,7 +53,9 @@ class TwoDimensionalModel(object):
             diagnostics_list='all',
             logfile=None,
             loglevel=1,
-            printcadence = 10):
+            printcadence = 10,
+            diagcadence = 1,
+            npad=4):
 
         if ny is None: ny = nx
         if Ly is None: Ly = Lx
@@ -69,7 +72,10 @@ class TwoDimensionalModel(object):
         self.x = np.arange(0.,Lx,self.dx)
         self.y = np.arange(0.,Ly,self.dy)
         self.x,self.y = np.meshgrid(self.x,self.y)
-
+        self.dS = self.dx*self.dy
+        # constant for spectral normalizations
+        self.M = self.nx*self.ny
+        self.M2 = self.M**2
         # physical
         self.nu = nu
         # background Q
@@ -84,6 +90,7 @@ class TwoDimensionalModel(object):
         self.t = 0.
         self.ndt = 0
         self.tsave = tsave
+        self.tavestart = tavestart
         self.nsave_max = int(np.ceil(self.ntmax/tsave))
         self.save2disk = save2disk
         self.nsave = 0
@@ -100,6 +107,8 @@ class TwoDimensionalModel(object):
         self.logfile = logfile
         self.loglevel=loglevel
         self.printcadence = printcadence
+        self.diagcadence = diagcadence
+        self.npad = npad
 
         # logger
         self._initialize_logger()
@@ -120,6 +129,9 @@ class TwoDimensionalModel(object):
 
         # initialize step forward
         self._init_rk3w()
+
+        # initialize diagnostics
+        self._initialize_diagnostics()
 
         # initialize tracer field
         self.set_q(np.random.randn(self.ny,self.nx))
@@ -146,6 +158,8 @@ class TwoDimensionalModel(object):
             if self.save2disk:
                 self._write2disk()
 
+            self._calc_diagnostics()
+
             self.t += self.dt
             self.ndt += 1
 
@@ -166,6 +180,8 @@ class TwoDimensionalModel(object):
                 yield self.t
             if self.save2disk:
                 self._write2disk()
+
+            self._calc_diagnostics()
 
             self.t += self.dt
             self.ndt += 1
@@ -195,6 +211,7 @@ class TwoDimensionalModel(object):
         self.qh = (self.L3*self.qh + self.c3*self.dt*self.nl1h +\
                 self.d2*self.dt*self.nl2h).copy()
         self.qh = self.filt*self.qh
+
 
         # AB2
         #if self.ndt == 0:
@@ -260,7 +277,6 @@ class TwoDimensionalModel(object):
         self.kj = 1j*self.k
         self.lj = 1j*self.l
 
-
     def set_q(self,q):
         """ Initialize tracer """
         self.q = q
@@ -284,8 +300,8 @@ class TwoDimensionalModel(object):
         if (self.ndt%self.tsave == 0.):
             self.t_save[self.nsave] = self.t
             self.q_save[:,:,self.nsave] = self.ifft2(self.qh)
-            self.ke_save[self.nsave] = self._calc_ke()
-            self.ens_save[self.nsave] = self._calc_ens()
+            #self.ke_save[self.nsave] = self._calc_ke()
+            self.var_save[self.nsave] = self.var
             self.nsave += 1
 
     def jacobian(self):
@@ -370,8 +386,8 @@ class TwoDimensionalModel(object):
 
         self.q_save = self.FNO.createVariable('q','f4',('y_dim','x_dim','time_dim'))
         self.t_save = self.FNO.createVariable('time','f4',('time_dim'))
-        self.ke_save = self.FNO.createVariable('ke','f4',('time_dim'))
-        self.ens_save = self.FNO.createVariable('ens','f4',('time_dim'))
+        #self.ke_save = self.FNO.createVariable('ke','f4',('time_dim'))
+        self.var_save = self.FNO.createVariable('var','f4',('time_dim'))
 
     # close netcdf output file
     def _close_fno(self):
@@ -389,6 +405,198 @@ class TwoDimensionalModel(object):
     def _calc_ens(self):
         ens = .5*self.spec_var(self.qh)
         return ens.sum()
+
+    # diagnostics stuff
+    ## diagnostic methods
+    def _initialize_nakamura(self):
+        self.Lmin2 = self.Lx**2
+        # this 2 is arbitrary here..
+        thmin,thmax = 0.,2*np.pi
+        self.dth = 0.1
+        self.dth2 = self.dth**2
+        self.TH = np.arange(thmin+self.dth/2,thmax-self.dth/2,self.dth)
+        self.Leq2 = np.empty(self.TH.size)
+        self.L = np.empty(self.TH.size)
+
+    def _calc_Leq2(self):
+
+        q = self.q + self.Q
+
+        q = np.vstack([(q[self.nx-self.nx/self.npad:]),q,\
+                        q[:self.nx/self.npad]])
+        gradq2 =  np.vstack([self.gradq2[self.nx-self.nx/self.npad:],\
+                              self.gradq2,self.gradq2[:self.nx/self.npad]])
+        #gradq2 = self.gradq2
+
+        gradq = np.sqrt(gradq2)
+
+        # parallelize this...
+        for i in range(self.TH.size):
+
+            self.fth2 = q<=self.TH[i]+self.dth/2
+            self.fth1 = q<=self.TH[i]-self.dth/2
+
+            A2 = self.dS*self.fth2.sum()
+            A1 = self.dS*self.fth1.sum()
+            self.dA = A2-A1
+
+            self.G2 = (gradq2[self.fth2]*self.dS).sum()-\
+                      (gradq2[self.fth1]*self.dS).sum()
+
+            self.Leq2[i] = self.G2*self.dA/self.dth2
+
+            self.L[i] = ((gradq[self.fth2]*self.dS).sum()-\
+                        (gradq[self.fth1]*self.dS).sum())/self.dth
+
+    def _calc_diagnostics(self):
+        if (self.t>=self.dt) and (self.t>=self.tavestart) and (self.t%self.diagcadence):
+            self._increment_diagnostics()
+
+    def _initialize_diagnostics(self):
+
+        # Initialization for diagnotics
+        self._initialize_nakamura()
+
+        self.diagnostics = dict()
+
+        self._setup_diagnostics()
+
+        if self.diagnostics_list == 'all':
+            pass # by default, all diagnostics are active
+        elif self.diagnostics_list == 'none':
+            self.set_active_diagnostics([])
+        else:
+            self.set_active_diagnostics(self.diagnostics_list)
+
+    def _setup_diagnostics(self):
+        """Diagnostics setup"""
+
+        self.add_diagnostic('var',
+            description='Tracer variance',
+            function= (lambda self: self.spec_var(self.qh))
+        )
+
+        self.add_diagnostic('KN',
+                    description='Nakamura diffusivity',
+                    function= (lambda self: (self.Leq2/self.Lmin2)*self.nu)
+                )
+
+        self.add_diagnostic('qbar',
+            description='x-averaged tracer',
+            function= (lambda self: self.qm)
+        )
+
+        self.add_diagnostic('grad2_q_bar',
+            description='x-averaged gradient square of th',
+            function= (lambda self: self.gradq2m)
+        )
+
+        self.add_diagnostic('vq2m',
+            description='x-averaged triple advective term v th2',
+            function= (lambda self: self.vq2m)
+            )
+
+        self.add_diagnostic('q2m',
+            description='x-averaged  q2',
+            function= (lambda self: self.q2m)
+            )
+
+        self.add_diagnostic('vqm',
+            description='x-averaged, y-direction tracer flux',
+            function= (lambda self: (self.v*self.q).mean(axis=1))
+        )  ### cu
+
+        self.add_diagnostic('fluxy',
+            description='x-averaged, y-direction tracer flux',
+            function= (lambda self: (self.v*self.q).mean(axis=1))
+        )
+
+        self.add_diagnostic('spec',
+            description='spec of anomalies about x-averaged flow',
+            function= (lambda self: np.abs(self.fft2(
+                        self.q-self.q.mean(axis=1)[...,np.newaxis]))**2/self.M2)
+        )
+
+    def _set_active_diagnostics(self, diagnostics_list):
+        for d in self.diagnostics:
+            self.diagnostics[d]['active'] == (d in diagnostics_list)
+
+    def add_diagnostic(self, diag_name, description=None, units=None, function=None):
+        # create a new diagnostic dict and add it to the object array
+
+        # make sure the function is callable
+        assert hasattr(function, '__call__')
+
+        # make sure the name is valid
+        assert isinstance(diag_name, str)
+
+        # by default, diagnostic is active
+        self.diagnostics[diag_name] = {
+           'description': description,
+           'units': units,
+           'active': True,
+           'count': 0,
+           'function': function, }
+
+    def describe_diagnostics(self):
+        """Print a human-readable summary of the available diagnostics."""
+        diag_names = self.diagnostics.keys()
+        diag_names.sort()
+        print('NAME               | DESCRIPTION')
+        print(80*'-')
+        for k in diag_names:
+            d = self.diagnostics[k]
+            print('{:<10} | {:<54}').format(
+                 *(k,  d['description']))
+
+    def _increment_diagnostics(self):
+
+        self._calc_derived_fields()
+
+        for dname in self.diagnostics:
+            if self.diagnostics[dname]['active']:
+                res = self.diagnostics[dname]['function'](self)
+                if self.diagnostics[dname]['count']==0:
+                    self.diagnostics[dname]['value'] = res
+                else:
+                    self.diagnostics[dname]['value'] += res
+                self.diagnostics[dname]['count'] += 1
+
+    def _calc_derived_fields(self):
+
+        """ Calculate derived field necessary for diagnostics """
+
+        # x-averaged tracer field
+        self.qm = self.q.mean(axis=1)
+
+        # anomaly about the x-averaged field
+        self.qa = self.q -self.qm[...,np.newaxis]*0.
+        self.qah = self.fft2(self.qa)
+
+        # x-averaged gradient squared
+        gradx = self.ifft2(1j*self.k*self.qah)
+        grady = self.ifft2(1j*self.l*self.qah)
+
+        self.gradq2 = (gradx**2 + grady**2)
+        self.gradq2m = self.gradq2.mean(axis=1)
+
+        # triple term
+        self.vq2m = (self.v*(self.qa**2)).mean(axis=1)
+
+        # diff transport
+        self.q2m = (self.qa**2).mean(axis=1)
+
+        # Leq2
+        self._calc_Leq2()
+
+    # def _calc_Leq2(self):
+    #     raise NotImplementedError(
+    #         'needs to be implemented by Model subclass')
+
+    def get_diagnostic(self, dname):
+        diag = (self.diagnostics[dname]['value'] /
+                 self.diagnostics[dname]['count'])
+        return  diag
 
     def spec_var(self,ph):
         """ compute variance of p from Fourier coefficients ph """

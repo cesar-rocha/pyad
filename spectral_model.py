@@ -163,7 +163,8 @@ class TwoDimensionalModel(object):
             self.t += self.dt
             self.ndt += 1
 
-        self._close_fno()
+        if self.save2disk:
+            self._close_fno()
 
     def run_with_snapshots(self, tsnapstart=0., tsnapint=432000.):
         """ Run the model forward until the next snapshot, then yield."""
@@ -186,7 +187,8 @@ class TwoDimensionalModel(object):
             self.t += self.dt
             self.ndt += 1
 
-        self._close_fno()
+        if self.save2disk:
+            self._close_fno()
 
         return
 
@@ -291,8 +293,9 @@ class TwoDimensionalModel(object):
         """Output some basic stats."""
         if (self.loglevel) and ((self.ndt % self.printcadence)==0):
             self.var = self.spec_var(self.qh)
-            self.logger.info('Step: %4i, Time: %3.2e, Variance: %3.2e'
-                    , self.ndt,self.t,self.var)            #assert cfl<1., "CFL condition violated"
+            self.cfl = self._calc_cfl()
+            self.logger.info('Step: %4i, Time: %3.2e, CFL: %3.2e, Variance: %3.2e'
+                    , self.ndt,self.t,self.cfl,self.var)            #assert cfl<1., "CFL condition violated"
 
 
     def _write2disk(self):

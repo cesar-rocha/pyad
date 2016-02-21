@@ -19,8 +19,7 @@ except ImportError:
 
 class TwoDimensionalModel(object):
 
-    """ A class that represents the 2D Advection-Diff model
-            in vorticity formulation """
+    """ A class that represents the 2D Advection-Diff model """
 
     def __init__(
             # grid parameters
@@ -128,8 +127,8 @@ class TwoDimensionalModel(object):
         self._initialize_fft()
 
         # initialize step forward
-        self._init_rk3w()
-
+        #self._init_rk3w()
+        self._init_etdrk4()
         # initialize diagnostics
         self._initialize_diagnostics()
 
@@ -194,39 +193,11 @@ class TwoDimensionalModel(object):
 
     def _stepforward(self):
 
-        """ march the system forward using a RK3W-theta scheme """
+        """  Updates velocity field and march one step forward """
 
         self._velocity()
-
-        self.nl1h = -self.jacobian()
-        self.qh = (self.L1*self.qh + self.c1*self.dt*self.nl1h).copy()
-        self.qh = self.filt*self.qh
-
-        self.nl2h = self.nl1h.copy()
-        self.nl1h = -self.jacobian()
-        self.qh = (self.L2*self.qh + self.c2*self.dt*self.nl1h +\
-                self.d1*self.dt*self.nl2h).copy()
-        self.qh = self.filt*self.qh
-
-        self.nl2h = self.nl1h.copy()
-        self.nl1h = -self.jacobian()
-        self.qh = (self.L3*self.qh + self.c3*self.dt*self.nl1h +\
-                self.d2*self.dt*self.nl2h).copy()
-        self.qh = self.filt*self.qh
-
-
-        # AB2
-        #if self.ndt == 0:
-        #    self.nl1h = -self.dt*self.jacobian()
-        #    self.qh = self.filt*(self.qh + self.nl1h)
-        #    self.nl2h = self.nl1h.copy()
-        #else:
-        #    self.nl1h = -self.dt*self.jacobian()
-        #    self.qh = self.filt*(self.qh + 1.5* self.nl1h  -0.5 * self.nl2h)
-        #    self.nl2h = self.nl1h.copy()
-
-        # forward euler (just for testing)
-        #self.qh = self.qh - self.dt*self.jacobian()
+        self._step_etdrk4()
+        #self._step_rk3w()
 
     def _velocity(self):
         raise NotImplementedError(
@@ -247,12 +218,15 @@ class TwoDimensionalModel(object):
         # vorticity
         self.q  = np.zeros(shape_real, dtype_real)
         self.qh = np.zeros(shape_cplx, dtype_cplx)
+        self.qh0 = np.zeros(shape_cplx, dtype_cplx)
+        self.qh1 = np.zeros(shape_cplx, dtype_cplx)
+
         # velocity
         self.u = np.zeros(shape_real, dtype_real)
         self.v = np.zeros(shape_real, dtype_real)
         # nonlinear-term
-        self.nl1h = np.zeros(shape_cplx, dtype_cplx)
-        self.nl2h = np.zeros(shape_cplx, dtype_cplx)
+        #self.nl1h = np.zeros(shape_cplx, dtype_cplx)
+        #self.nl2h = np.zeros(shape_cplx, dtype_cplx)
 
     def _initialize_fft(self):
         # set up fft functions for use later
@@ -285,7 +259,7 @@ class TwoDimensionalModel(object):
         self.qh = self.fft2(self.q)
 
     def set_uv(self,u,v):
-        """ Initialize tracer """
+        """ Initialize velocity field """
         self.v = v
         self.u = u
 
@@ -308,26 +282,24 @@ class TwoDimensionalModel(object):
             self.nsave += 1
 
     def jacobian(self):
+
         """ Compute the Jacobian in conservative form """
 
-        # update velocity field
-        #self.ph = self.filt*self.ph
-
         self.q = self.ifft2(self.qh)
-
-        # start with steady velocity field
-        #self.u = self.ifft2(-self.lj*self.ph)
-        #self.v = self.ifft2( self.kj*self.ph)
-
         jach = self.kj*self.fft2(self.u*self.q) +\
                 self.lj*self.fft2(self.v*(self.q))\
                 + self.G*self.vh
 
         return jach
 
-    # step forward
     def _init_rk3w(self):
-        """ Initialize stuff for marching scheme """
+
+        """ This pre-computes coefficients to a low storage implicit-explicit
+            Runge Kutta time stepper.
+
+            See Spalart, Moser, and Rogers. Spectral methods for the navier-stokes
+                equations with one infinite and two periodic directions. Journal of
+                Computational Physics, 96(2):297 - 324, 1991. """
 
         self.a1, self.a2, self.a3 = 29./96., -3./40., 1./6.
         self.b1, self.b2, self.b3 = 37./160., 5./24., 1./6.
@@ -338,6 +310,76 @@ class TwoDimensionalModel(object):
         self.L1 = ( (1. + self.a1*self.Lin)/(1. - self.b1*self.Lin) )
         self.L2 = ( (1. + self.a2*self.Lin)/(1. - self.b2*self.Lin) )
         self.L3 = ( (1. + self.a2*self.Lin)/(1. - self.b3*self.Lin) )
+
+    def _step_rk3w(self):
+
+        self.nl1h = -self.jacobian()
+        self.qh = (self.L1*self.qh + self.c1*self.dt*self.nl1h).copy()
+        self.qh = self.filt*self.qh
+
+        self.nl2h = self.nl1h.copy()
+        self.nl1h = -self.jacobian()
+        self.qh = (self.L2*self.qh + self.c2*self.dt*self.nl1h +\
+                self.d1*self.dt*self.nl2h).copy()
+        self.qh = self.filt*self.qh
+
+        self.nl2h = self.nl1h.copy()
+        self.nl1h = -self.jacobian()
+        self.qh = (self.L3*self.qh + self.c3*self.dt*self.nl1h +\
+                self.d2*self.dt*self.nl2h).copy()
+        self.qh = self.filt*self.qh
+
+    def _init_etdrk4(self):
+
+        """ This performs pre-computations for the Expotential Time Differencing
+            Fourth Order Runge Kutta time stepper. The linear part is calculated
+            exactly.
+
+            See Cox and Matthews, J. Comp. Physics., 176(2):430-455, 2002.
+                Kassam and Trefethen, IAM J. Sci. Comput., 26(4):1214-233, 2005. """
+
+        # the exponent for the linear part
+        self.c = -self.nu*self.kappa2
+
+        ch = self.c*self.dt
+        self.expch = np.exp(ch)
+        self.expch_h = np.exp(ch/2.)
+        self.expch2 = np.exp(2.*ch)
+
+        M = 32.  # number of points for line integral in the complex plane
+        rho = 1.  # radius for complex integration
+        r = rho*np.exp(2j*np.pi*((np.arange(1.,M+1))/M))# roots for integral
+
+        #l1,l2 = self.ch.shape
+        #LR = np.repeat(ch,M).reshape(l1,l2,M) + np.repeat(r,l1*l2).reshape(M,l1,l2).T
+        LR = ch[...,np.newaxis] + r[np.newaxis,np.newaxis,...]
+        LR2 = LR*LR
+        LR3 = LR2*LR
+
+        self.Qh   =  self.dt*(((np.exp(LR/2.)-1.)/LR).mean(axis=2));
+        self.f0  =  self.dt*( ( ( -4. - LR + ( np.exp(LR)*( 4. - 3.*LR + LR2 ) ) )/ LR3 ).mean(axis=2) )
+        self.fab =  self.dt*( ( ( 2. + LR + np.exp(LR)*( -2. + LR ) )/ LR3 ).mean(axis=2) )
+        self.fc  =  self.dt*( ( ( -4. -3.*LR - LR2 + np.exp(LR)*(4.-LR) )/ LR3 ).mean(axis=2) )
+
+    def _step_etdrk4(self):
+
+        self.qh0 = self.qh.copy()
+
+        Fn0 = -self.jacobian()
+        self.qh = (self.expch_h*self.qh0 + Fn0*self.Qh)*self.filt
+        self.qh1 = self.qh.copy()
+
+        Fna = -self.jacobian()
+        self.qh = (self.expch_h*self.qh0 + Fna*self.Qh)*self.filt
+
+        Fnb = -self.jacobian()
+        self.qh = (self.expch_h*self.qh1 + ( 2.*Fnb - Fn0 )*self.Qh)*self.filt
+
+        Fnc =  -self.jacobian()
+
+        self.qh = (self.expch*self.qh0 + Fn0*self.f0 +  2.*(Fna+Fnb)*self.fab\
+                  + Fnc*self.fc)*self.filt
+
 
     def _init_filter(self):
         """ Set spectral filter """

@@ -245,6 +245,12 @@ class TwoDimensionalModel(object):
             self.qh2q = pyfftw.builders.irfft2(self.qh,threads=self.ntd,\
                             planner_effort='FFTW_ESTIMATE')
 
+            self.uq2uqh = pyfftw.builders.rfft2(self.q*self.u,threads=self.ntd,\
+                            planner_effort='FFTW_ESTIMATE')
+
+            self.vq2vqh = pyfftw.builders.rfft2(self.q*self.v,threads=self.ntd,\
+                            planner_effort='FFTW_ESTIMATE')
+
         else:
             self.fft2 =  (lambda x : np.fft.rfft2(x))
             self.ifft2 = (lambda x : np.fft.irfft2(x))
@@ -295,10 +301,11 @@ class TwoDimensionalModel(object):
         """ Compute the Jacobian in conservative form """
 
         #self.q = self.ifft2(self.qh)
-        self.q2qh()
-        jach = self.kj*self.fft2(self.u*self.q) +\
-                self.lj*self.fft2(self.v*(self.q))\
-                + self.G*self.vh
+        self.qh2q()
+        # jach = self.kj*self.fft2(self.u*self.q) +\
+        #         self.lj*self.fft2(self.v*(self.q))\
+        #         + self.G*self.vh
+        jach = self.kj*self.uq2uqh() + self.lj*self.uv2uvh() + self.G*self.vh
 
         return jach
 

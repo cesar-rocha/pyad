@@ -231,11 +231,11 @@ class TwoDimensionalModel(object):
     def _initialize_fft(self):
         # set up fft functions for use later
         if self.use_fftw:
-            
-             self.fft2 = (lambda x :
+
+            self.fft2 = (lambda x :
                      pyfftw.interfaces.numpy_fft.rfft2(x, threads=self.ntd,\
                              planner_effort='FFTW_ESTIMATE'))
-             self.ifft2 = (lambda x :
+            self.ifft2 = (lambda x :
                      pyfftw.interfaces.numpy_fft.irfft2(x, threads=self.ntd,\
                              planner_effort='FFTW_ESTIMATE'))
 

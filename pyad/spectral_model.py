@@ -256,6 +256,14 @@ class TwoDimensionalModel(object):
             self.fft2 =  (lambda x : np.fft.rfft2(x))
             self.ifft2 = (lambda x : np.fft.irfft2(x))
 
+            self.q2qh = (lambda : np.fft.rfft2(self.q))
+            self.v2vh = (lambda : np.fft.rfft2(self.v))
+            self.qh2q = (lambda : np.fft.irfft2(self.qh))
+            self.uq2uqh = (lambda : np.fft.rfft2(self.q*self.u))
+            self.vq2vqh = (lambda: np.fft.rfft2(self.q*self.u))
+
+
+
     def _init_kxky(self):
         """ Calculate wavenumbers """
 

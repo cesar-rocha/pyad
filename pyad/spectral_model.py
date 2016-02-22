@@ -231,12 +231,20 @@ class TwoDimensionalModel(object):
     def _initialize_fft(self):
         # set up fft functions for use later
         if self.use_fftw:
-            self.fft2 = (lambda x :
-                    pyfftw.interfaces.numpy_fft.rfft2(x, threads=self.ntd,\
-                            planner_effort='FFTW_ESTIMATE'))
-            self.ifft2 = (lambda x :
-                    pyfftw.interfaces.numpy_fft.irfft2(x, threads=self.ntd,\
-                            planner_effort='FFTW_ESTIMATE'))
+            # self.fft2 = (lambda x :
+            #         pyfftw.interfaces.numpy_fft.rfft2(x, threads=self.ntd,\
+            #                 planner_effort='FFTW_ESTIMATE'))
+            # self.ifft2 = (lambda x :
+            #         pyfftw.interfaces.numpy_fft.irfft2(x, threads=self.ntd,\
+            #                 planner_effort='FFTW_ESTIMATE'))
+
+            self.q2qh = pyfftw.builders.rfft2(self.q,threads=self.ntd,\
+                            planner_effort='FFTW_ESTIMATE')
+            self.v2vh = pyfftw.builders.rfft2(self.v,threads=self.ntd,\
+                                        planner_effort='FFTW_ESTIMATE')
+            self.qh2q = pyfftw.builders.irfft2(self.qh,threads=self.ntd,\
+                            planner_effort='FFTW_ESTIMATE')
+
         else:
             self.fft2 =  (lambda x : np.fft.rfft2(x))
             self.ifft2 = (lambda x : np.fft.irfft2(x))
@@ -256,7 +264,8 @@ class TwoDimensionalModel(object):
     def set_q(self,q):
         """ Initialize tracer """
         self.q = q
-        self.qh = self.fft2(self.q)
+        #self.qh = self.fft2(self.q)
+        self.q2qh()
 
     def set_uv(self,u,v):
         """ Initialize velocity field """
@@ -285,7 +294,8 @@ class TwoDimensionalModel(object):
 
         """ Compute the Jacobian in conservative form """
 
-        self.q = self.ifft2(self.qh)
+        #self.q = self.ifft2(self.qh)
+        self.q2qh()
         jach = self.kj*self.fft2(self.u*self.q) +\
                 self.lj*self.fft2(self.v*(self.q))\
                 + self.G*self.vh

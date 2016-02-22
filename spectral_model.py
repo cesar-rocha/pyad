@@ -467,8 +467,8 @@ class TwoDimensionalModel(object):
 
         q = self.q + self.Q
 
-        q = np.vstack([(q[self.nx-self.nx/self.npad:]),q,\
-                        q[:self.nx/self.npad]])
+        q = np.vstack([(q[self.nx-self.nx/self.npad:])-2*np.pi,q,\
+                        q[:self.nx/self.npad]+2*np.pi])
         gradq2 =  np.vstack([self.gradq2[self.nx-self.nx/self.npad:],\
                               self.gradq2,self.gradq2[:self.nx/self.npad]])
         #gradq2 = self.gradq2

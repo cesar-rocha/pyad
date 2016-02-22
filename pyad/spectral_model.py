@@ -215,6 +215,9 @@ class TwoDimensionalModel(object):
         shape_real = (self.ny, self.nx)
         shape_cplx = (self.ny, self.nx/2+1)
 
+        #x_buffer = pyfftw.n_byte_align_empty((8192,8192,), 16, 'complex128')
+        #f_buffer = pyfftw.n_byte_align_empty((8192,8192,), 16, 'complex128')
+
         # vorticity
         self.q  = np.zeros(shape_real, dtype_real)
         self.qh = np.zeros(shape_cplx, dtype_cplx)

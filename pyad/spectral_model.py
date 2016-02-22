@@ -305,7 +305,7 @@ class TwoDimensionalModel(object):
         # jach = self.kj*self.fft2(self.u*self.q) +\
         #         self.lj*self.fft2(self.v*(self.q))\
         #         + self.G*self.vh
-        jach = self.kj*self.uq2uqh() + self.lj*self.uv2uvh() + self.G*self.vh
+        jach = self.kj*self.uq2uqh() + self.lj*self.vq2vqh() + self.G*self.vh
 
         return jach
 

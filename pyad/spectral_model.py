@@ -14,6 +14,7 @@ except ImportError:
 try:
     import pyfftw
     pyfftw.interfaces.cache.enable()
+    pyfftw.interfaces.cache.set_keepalive_time(10)
 except ImportError:
     pass
 
@@ -123,7 +124,6 @@ class TwoDimensionalModel(object):
         # allocate variables
         self._allocate_variables()
 
-
         # initialize step forward
         #self._init_rk3w()
         self._init_etdrk4()
@@ -211,28 +211,22 @@ class TwoDimensionalModel(object):
     def _allocate_variables(self):
         """ Allocate variables in memory """
 
-        dtype_real = np.dtype('float64')
-        dtype_cplx = np.dtype('complex128')
-        shape_real = (self.ny, self.nx)
-        shape_cplx = (self.ny, self.nx/2+1)
-
-        #x_buffer = pyfftw.n_byte_align_empty((8192,8192,), 16, 'complex128')
-        #f_buffer = pyfftw.n_byte_align_empty((8192,8192,), 16, 'complex128')
+        self.dtype_real = np.dtype('float64')
+        self.dtype_cplx = np.dtype('complex128')
+        self.shape_real = (self.ny, self.nx)
+        self.shape_cplx = (self.ny, self.nx/2+1)
 
         # vorticity
-        #self.q  = np.zeros(shape_real, dtype_real)
-        #self.qh = np.zeros(shape_cplx, dtype_cplx)
-        self.qh0 = np.zeros(shape_cplx, dtype_cplx)
-        self.qh1 = np.zeros(shape_cplx, dtype_cplx)
+        self.q  = np.zeros(self.shape_real,  self.dtype_real)
+        self.qh = np.zeros(self.shape_cplx,  self.dtype_cplx)
+        self.qh0 = np.zeros(self.shape_cplx, self.dtype_cplx)
+        self.qh1 = np.zeros(self.shape_cplx, self.dtype_cplx)
 
-        self.q = pyfftw.n_byte_align_empty(shape_real,pyfftw.simd_alignment, dtype=dtype_real)
-        self.qh =  pyfftw.n_byte_align_empty(shape_cplx,pyfftw.simd_alignment, dtype=dtype_cplx)
+        # # velocity
+        self.u = np.zeros(self.shape_real,  self.dtype_real)
+        self.v = np.zeros(self.shape_real,  self.dtype_real)
+        self.vh = np.zeros(self.shape_cplx, self.dtype_cplx)
 
-
-        # velocity
-        self.u = np.zeros(shape_real, dtype_real)
-        self.v = np.zeros(shape_real, dtype_real)
-        self.vh = np.zeros(shape_cplx, dtype_cplx)
         # nonlinear-term
         #self.nl1h = np.zeros(shape_cplx, dtype_cplx)
         #self.nl2h = np.zeros(shape_cplx, dtype_cplx)
@@ -242,40 +236,36 @@ class TwoDimensionalModel(object):
         # set up fft functions for use later
         if self.use_fftw:
 
+            A = pyfftw.n_byte_align_empty(self.shape_real, pyfftw.simd_alignment,\
+                                          dtype=self.dtype_real)
+            Ah = pyfftw.n_byte_align_empty(self.shape_cplx, pyfftw.simd_alignment,\
+                                          dtype=self.dtype_cplx)
+
             self.fft2 = (lambda x :
-                     pyfftw.interfaces.numpy_fft.rfft2(x, threads=self.ntd,\
-                             planner_effort='FFTW_MEASURE'))
+                    pyfftw.interfaces.numpy_fft.rfft2(x, threads=self.ntd,\
+                            planner_effort='FFTW_MEASURE'))
             self.ifft2 = (lambda x :
-                     pyfftw.interfaces.numpy_fft.irfft2(x, threads=self.ntd,\
-                             planner_effort='FFTW_MEASURE'))
+                    pyfftw.interfaces.numpy_fft.irfft2(x, threads=self.ntd,\
+                            planner_effort='FFTW_MEASURE'))
 
             # Forward transforms
-            self.q2qh = pyfftw.builders.rfft2(self.q,threads=self.ntd,\
-                            planner_effort='FFTW_MEASURE')
-
-            self.v2vh = pyfftw.builders.rfft2(self.v,threads=self.ntd,\
-                                       planner_effort='FFTW_ESTIMATE')
-
-            self.uq2uqh = pyfftw.builders.rfft2(self.q*self.u,threads=self.ntd,\
-                            planner_effort='FFTW_MEASURE')
-
-            self.vq2vqh = pyfftw.builders.rfft2(self.q*self.v,threads=self.ntd,\
+            self.A2Ah = pyfftw.builders.rfft2(A,threads=self.ntd,\
                             planner_effort='FFTW_MEASURE')
 
             # Backward transforms
-            self.qh2q = pyfftw.builders.irfft2(self.qh,threads=self.ntd,\
+            self.Ah2A = pyfftw.builders.irfft2(Ah,threads=self.ntd,\
                             planner_effort='FFTW_MEASURE')
+
+            del A, Ah
 
         else:
             self.fft2 =  (lambda x : np.fft.rfft2(x))
             self.ifft2 = (lambda x : np.fft.irfft2(x))
 
-            self.q2qh = (lambda : np.fft.rfft2(self.q))
-            self.v2vh = (lambda : np.fft.rfft2(self.v))
-            self.qh2q = (lambda : np.fft.irfft2(self.qh))
-            self.uq2uqh = (lambda : np.fft.rfft2(self.q*self.u))
-            self.vq2vqh = (lambda: np.fft.rfft2(self.q*self.u))
-
+            def A2Ah(self,A):
+                return np.fft.rfft2(A)
+            def Ah2A(self,Ah):
+                return np.fft.irfft2(Ah)
 
 
     def _init_kxky(self):
@@ -293,8 +283,8 @@ class TwoDimensionalModel(object):
     def set_q(self,q):
         """ Initialize tracer """
         self.q = q
-        self.qh = self.fft2(self.q)
-        #self.q2qh()
+        #self.qh = self.fft2(self.q)
+        self.qh = self.A2Ah(self.q)
 
     def set_uv(self,u,v):
         """ Initialize velocity field """
@@ -323,12 +313,13 @@ class TwoDimensionalModel(object):
 
         """ Compute the Jacobian in conservative form """
 
-        self.q = self.ifft2(self.qh)
-        #self.qh2q()
-        jach = self.kj*self.fft2(self.u*self.q) +\
-                 self.lj*self.fft2(self.v*(self.q))\
-                 + self.G*self.vh
-        #jach = self.kj*self.uq2uqh() + self.lj*self.vq2vqh() + self.G*self.vh
+        #self.q = self.ifft2(self.qh)
+        self.q = self.Ah2A(self.qh)
+        # jach = self.kj*self.fft2(self.u*self.q) +\
+        #          self.lj*self.fft2(self.v*(self.q))\
+        #          + self.G*self.vh
+        jach = self.kj*self.A2Ah(self.u*self.q) + self.lj*self.A2Ah(self.v*self.q)\
+                                + self.G*self.vh
 
         return jach
 

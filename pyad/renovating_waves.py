@@ -70,8 +70,8 @@ class RWModel(spectral_model.TwoDimensionalModel):
                 self.dirx = False
             else:
                 self.u = self.u*0
-                self.vh = self.fft2(self.v)
-                #self.v2vh()
+                #self.vh = self.fft2(self.v)
+                self.vh = self.A2Ah(self.v)
                 self.dirx = True
 
         else:

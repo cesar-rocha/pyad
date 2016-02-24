@@ -283,8 +283,8 @@ class TwoDimensionalModel(object):
     def set_q(self,q):
         """ Initialize tracer """
         self.q = q
-        #self.qh = self.fft2(self.q)
-        self.qh = self.A2Ah(self.q)
+        self.qh = self.fft2(self.q)
+        #self.qh = self.A2Ah(self.q)
 
     def set_uv(self,u,v):
         """ Initialize velocity field """
@@ -313,8 +313,8 @@ class TwoDimensionalModel(object):
 
         """ Compute the Jacobian in conservative form """
 
-        #self.q = self.ifft2(self.qh)
-        self.q = self.Ah2A(self.qh)
+        self.q = self.ifft2(self.qh)
+        #self.q = self.Ah2A(self.qh)
         # jach = self.kj*self.fft2(self.u*self.q) +\
         #          self.lj*self.fft2(self.v*(self.q))\
         #          + self.G*self.vh

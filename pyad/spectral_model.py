@@ -55,7 +55,8 @@ class TwoDimensionalModel(object):
             loglevel=1,
             printcadence = 10,
             diagcadence = 1,
-            npad=4):
+            npad=4,
+            etdrk4=False):
 
         if ny is None: ny = nx
         if Ly is None: Ly = Lx
@@ -110,6 +111,8 @@ class TwoDimensionalModel(object):
         self.diagcadence = diagcadence
         self.npad = npad
 
+        self.etdrk4 = etdrk4
+
         # logger
         self._initialize_logger()
 
@@ -125,8 +128,11 @@ class TwoDimensionalModel(object):
         self._allocate_variables()
 
         # initialize step forward
-        #self._init_rk3w()
-        self._init_etdrk4()
+        if self.etdrk4:
+            self._init_etdrk4()
+        else:
+            self._init_rk3w()
+
         # initialize diagnostics
         self._initialize_diagnostics()
 
@@ -197,8 +203,11 @@ class TwoDimensionalModel(object):
         """  Updates velocity field and march one step forward """
 
         self._velocity()
-        self._step_etdrk4()
-        #self._step_rk3w()
+
+        if self.etdrk4:
+            self._step_etdrk4()
+        else:
+            self._step_rk3w()
 
     def _velocity(self):
         raise NotImplementedError(

@@ -355,19 +355,22 @@ class TwoDimensionalModel(object):
 
     def _step_rk3w(self):
 
+        self.qh0 = self.qh.copy()  # necessary because qh is destroy by ifftw
         self.nl1h = -self.jacobian()
-        self.qh = (self.L1*self.qh + self.c1*self.dt*self.nl1h).copy()
+        self.qh = (self.L1*self.qh0 + self.c1*self.dt*self.nl1h).copy()
         self.qh = self.filt*self.qh
 
         self.nl2h = self.nl1h.copy()
+        self.qh0 = self.qh.copy()
         self.nl1h = -self.jacobian()
-        self.qh = (self.L2*self.qh + self.c2*self.dt*self.nl1h +\
+        self.qh = (self.L2*self.qh0 + self.c2*self.dt*self.nl1h +\
                 self.d1*self.dt*self.nl2h).copy()
         self.qh = self.filt*self.qh
 
         self.nl2h = self.nl1h.copy()
+        self.qh0 = self.qh.copy()
         self.nl1h = -self.jacobian()
-        self.qh = (self.L3*self.qh + self.c3*self.dt*self.nl1h +\
+        self.qh = (self.L3*self.qh0 + self.c3*self.dt*self.nl1h +\
                 self.d2*self.dt*self.nl2h).copy()
         self.qh = self.filt*self.qh
 
